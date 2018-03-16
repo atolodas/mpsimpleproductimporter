@@ -26,9 +26,6 @@
 
 class AdminMpSimpleProductImporterController extends ModuleAdminController
 {
-    public $id_customer_prefix;
-    private $date_start;
-    private $date_end;
     private $helperListContent;
     private $helperFormContent;
     public $link;
@@ -127,8 +124,15 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
     public function ajaxProcessImportSelected()
     {
         $ids = Tools::getValue('ids');
+        $import_img = (int)Tools::getValue('import_images');
         $controller = $this->getCustomController('Importer');
-        $result = $controller->run(array('action' => 'import', 'ids' => $ids));
+        $controller->run(
+            array(
+                'action' => 'import',
+                'ids' => $ids,
+                'import_images' => $import_img
+            )
+        );
         exit();
     }
     
@@ -200,34 +204,6 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         return '';
     }
     
-    private function getHelperListContent()
-    {
-        $attachment = Tools::fileAttachment('input_file_excel_import');
-        if ($attachment['mime']!='application/vnd.ms-excel') {
-            $this->errors[] = $this->l('Please, select an 97-2003 excel file.');
-            return false;
-        }
-        return "<pre>" . print_r($attachment,1) . "</pre>";
-        return $result;
-    }
-    
-    private function addDateToSql(DbQueryCore $sql, $date_field)
-    {
-        if (Tools::strpos($date_field, '.')) {
-            $split = explode('.',$date_field);
-            $date_field = $split[0].'.`'.$split[1].'`';
-        }
-        
-        if (!empty($this->date_start) && !empty($this->date_end)) {
-            $sql->where("$date_field between '$this->date_start' and '$this->date_end'");
-        } elseif (!empty($this->date_start) && empty($this->date_end)) {
-            $sql->where("$date_field >= '$this->date_start'");
-        } elseif (empty($this->date_start) && !empty($this->date_end)) {
-            $sql->where("$date_field <= '$this->date_end'");
-        }
-        return $sql;
-    }
-    
     public function getDiscount($price_full, $price_reducted)
     {
         return sprintf('%.4f', (($price_full-$price_reducted)/$price_full) * 100);
@@ -276,6 +252,25 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
                         'prefix' => '<i class="icon-chevron-right"></i>',
                         'suffix' => '<i class="icon-excel"></i>',
                     ),
+                    array(
+						'type' => 'switch',
+						'label' => $this->l('Import images?'),
+						'name' => 'input_switch_import_images',
+						'desc' => $this->l('If set, imports images products.'),
+						'is_bool' => true,
+						'values' => array(
+							array(
+								'id' => 'active_on',
+								'value' => 1,
+								'label' => $this->l('Yes')
+							),
+							array(
+								'id' => 'active_off',
+								'value' => 0,
+								'label' => $this->l('No')
+							)
+						),
+					)
                 ),
                 'submit' => array(
                     'title' => $this->l('Get'),
@@ -309,7 +304,7 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
             $helper->tpl_vars = array(
                 'fields_value' => array(
                     'input_file_csv_import' => '',
-                    'input_file_image_folder' => '',
+                    'input_switch_import_images' => (int)Tools::getValue('input_switch_import_images', 1),
                 ),
                 'languages' => $this->context->controller->getLanguages(),
             );

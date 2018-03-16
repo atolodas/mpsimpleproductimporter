@@ -25,6 +25,7 @@
 * Don't forget to prefix your containers with your own identifier
 * to avoid any conflicts with others containers.
 */
+var input_switch_import_images = 1;
 $(document).ready(function(){
     $('.btn.btn-default.dropdown-toggle').hide();
     $('#progress_circle').percircle(
@@ -33,6 +34,11 @@ $(document).ready(function(){
             pogressBarColor: "#8050bb"
         }
     ).closest('div').hide();
+    $('input[name=input_switch_import_images]').on('change', function(){
+        input_switch_import_images = this.value;
+    });
+    input_switch_import_images = $('input[name=input_switch_import_images]').val();
+    $('input[name=input_switch_import_images]').change();
 });
 
 function mpimport_checkAll()
@@ -100,7 +106,8 @@ function mpimport_importSelectedProducts()
                 {
                     ajax: true,
                     action: 'importSelected',
-                    ids: ids
+                    ids: ids,
+                    import_images: input_switch_import_images
                 }
             })
             .done(function(json){

@@ -1,9 +1,27 @@
 <?php
-
-/* 
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+/**
+ * 2017 mpSOFT
+ *
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Academic Free License (AFL 3.0)
+ * that is bundled with this package in the file LICENSE.txt.
+ * It is also available through the world-wide-web at this URL:
+ * http://opensource.org/licenses/afl-3.0.php
+ * If you did not receive a copy of the license and are unable to
+ * obtain it through the world-wide-web, please send an email
+ * to license@prestashop.com so we can send you a copy immediately.
+ *
+ * DISCLAIMER
+ *
+ * Do not edit or add to this file if you wish to upgrade PrestaShop to newer
+ * versions in the future. If you wish to customize PrestaShop for your
+ * needs please refer to http://www.prestashop.com for more information.
+ *
+ *  @author    mpSOFT by Massimiliano Palermo<info@mpsoft.it>
+ *  @copyright 2017 mpSOFT by Massimiliano Palermo
+ *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
+ *  International Registered Trademark & Property of mpSOFT
  */
 
 class MpSimpleProductImporterImporterController
@@ -44,6 +62,7 @@ class MpSimpleProductImporterImporterController
     public function processActionImport($params)
     {
         $ids = $params['ids'];
+        $import_images = (int)$params['import_images'];
         $result = $this->getRows($ids);
         $products = array();
         
@@ -58,7 +77,7 @@ class MpSimpleProductImporterImporterController
             );
         }
         if ($products) {
-            $this->importProducts($products);
+            $this->importProducts($products, $import_images);
             print Tools::jsonEncode(
                 array(
                     'result' => true,
@@ -116,7 +135,7 @@ class MpSimpleProductImporterImporterController
             $record['no-stock'] = isset($product['#no-stock'])?$product['#stock']:'';
             $record['tax_rate'] = isset($product['#tax'])?$product['#tax']:'';
             $record['image'] = isset($product['image'])?$product['image']:'';
-            $record['category_default'] = $categories[0];
+            $record['category_default'] = $product['category default'];
             $record['categories'] = $categories;
             $record['price'] = $product['price'];
             
@@ -238,7 +257,7 @@ class MpSimpleProductImporterImporterController
         return '<li>'. $title . ': <strong>' . $value . '</strong></li>';
     }
     
-    public function importProducts($products)
+    public function importProducts($products, $import_images = 1)
     {
         $totalProducts = count($products);
         $idx = 0;
@@ -280,9 +299,13 @@ class MpSimpleProductImporterImporterController
             $objproduct->available_later[$this->id_lang] = $product['no-stock'];
             $objproduct->available_for_order = 1;
             $objproduct->description_short[$this->id_lang] = $product['description_short'];
-            
+            $objproduct->out_of_stock = 1;
             try {
-                $objproduct->addToCategories($product['categories']);
+                $this->controller->errors[] = sprintf(
+                    $this->l('add to categories %s: %d'),
+                    print_r($product['categories'], 1),
+                    (int)$objproduct->addToCategories($product['categories'])
+                );
             } catch (Exception $ex) {
                 $this->controller->errors[] = sprintf(
                     $this->l('addToCategories for product %s failed: %s'),
@@ -346,11 +369,13 @@ class MpSimpleProductImporterImporterController
                 }
                 //ADD COMBINATIONS
                 $this->enumeration($objproduct->id, $product['attributes']);
-                //ADD IMAGES
-                $this->addImage($objproduct->id, $objproduct->supplier_reference);
+                if ($import_images) {
+                    //ADD IMAGES
+                    $this->addImage($objproduct->id, $objproduct->supplier_reference);
+                }
             }
             $idx++;
-            $currentPercent = $this->setPercent($idx, $totalProducts);
+            $this->setPercent($idx, $totalProducts);
         }
     }
     

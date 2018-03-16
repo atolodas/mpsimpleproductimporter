@@ -48,7 +48,7 @@ class MpSimpleProductImporter extends Module
         parent::__construct();
 
         $this->displayName = $this->l('MP Simple product importer');
-        $this->description = $this->l('Import Products from Excel sheet');
+        $this->description = $this->l('Import Products from CSV file');
         $this->confirmUninstall = $this->l('Are you sure you want to uninstall?');
         $this->id_lang = (int)Context::getContext()->language->id;
         $this->link = Context::getContext()->link;
@@ -69,7 +69,7 @@ class MpSimpleProductImporter extends Module
             return false;
         }
         
-        include $this->_path().'sql/install.php';
+        include $this->_path.'sql/install.php';
         
         return true;
     }
