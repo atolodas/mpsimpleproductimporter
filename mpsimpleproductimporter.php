@@ -68,6 +68,9 @@ class MpSimpleProductImporter extends Module
         ) {
             return false;
         }
+        
+        include $this->_path().'sql/install.php';
+        
         return true;
     }
       

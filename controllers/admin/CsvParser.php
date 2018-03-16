@@ -35,9 +35,9 @@ class MpSimpleProductImporterCsvParserController
         }
     }
     
-    public function processActionGetFile()
+    public function processActionInsert()
     {
-        $attachment = Tools::fileAttachment('input_file_excel_import', false);
+        $attachment = Tools::fileAttachment('input_file_csv_import', false);
         if ($attachment['mime']!='text/csv') {
             $this->controller->errors[] = $this->l('Please, select an csv file.');
             return false;
@@ -65,12 +65,13 @@ class MpSimpleProductImporterCsvParserController
         $csvTitles = array();
         $csvContent = array();
         
-        $mandatory = array('reference','name','category default');
+        $mandatory = array('id', 'new', 'reference', 'name', 'category default');
         //Get titles
         foreach($csv[0] as $col)
         {
             $csvTitles[] = Tools::strtolower($col);
         }
+        
         $intersect = count(array_intersect($mandatory, $csvTitles));
         if ($intersect != count($mandatory)) {
             $this->controller->errors[] = $this->l('Missing mandatory columns.');
@@ -95,6 +96,9 @@ class MpSimpleProductImporterCsvParserController
         $db->execute('truncate table `'._DB_PREFIX_.$this->table_import.'`;');
         foreach ($csvContent as $product) {
             if (!empty($product['reference'])) {
+                $fmt = new NumberFormatter('it-IT', NumberFormatter::DECIMAL);
+                $price = isset($product['price'])?$fmt->parse($product['price']):'0.00';
+                $product['price'] = $price;
                 $content = serialize($product);
                 if (empty($content)) {
                     $this->controller->errors[] = sprintf(
@@ -116,16 +120,15 @@ class MpSimpleProductImporterCsvParserController
         }
         
         $sql = new DbQueryCore();
-        $sql->select('*')
+        $sql->select('count(*)')
             ->from($this->table_import)
-            ->where('token=\''.pSQL($this->token) . '\'')
-            ->orderBy('reference');
-        $result = $db->executeS($sql);
-        $output = array();
-        foreach ($result as $row) {
-            $output[] = unserialize($row['content']);
+            ->where('token=\''.pSQL($this->token) . '\'');
+        $result = $db->getValue($sql);
+        if ($result) {
+            return $result;
         }
-        return $output;
+        $this->controller->errors[] = sprintf($this->l('Error getting table tada: %s'), $db->getMsgError());
+        return false;
     }
     
     public function readCSV($csvFile){
@@ -156,6 +159,4 @@ class MpSimpleProductImporterCsvParserController
         }
         return Translate::getAdminTranslation($string, $class, $addslashes, $htmlentities);
     }
-    
-    
 }

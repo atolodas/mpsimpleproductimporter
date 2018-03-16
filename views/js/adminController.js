@@ -25,11 +25,34 @@
 * Don't forget to prefix your containers with your own identifier
 * to avoid any conflicts with others containers.
 */
+$(document).ready(function(){
+    $('.btn.btn-default.dropdown-toggle').hide();
+    $('#progress_circle').percircle(
+        {
+            percent: 0,
+            pogressBarColor: "#8050bb"
+        }
+    ).closest('div').hide();
+});
 
-function exportSelectedDocuments()
+function mpimport_checkAll()
+{
+    $('input[name="importBox[]"]').each(function(){
+        this.checked=true;
+    });
+}
+
+function mpimport_uncheckAll()
+{
+    $('input[name="importBox[]"]').each(function(){
+        this.checked=false;
+    });
+}
+
+function mpimport_importSelectedProducts()
 {
     var title = 'Confirm';
-    var translate = 'Export selected documents?';
+    var translate = 'Import selected products?';
     var translation = '';
     $.ajax({
         type: 'POST',
@@ -58,8 +81,17 @@ function exportSelectedDocuments()
     });
     
     jConfirm(translation, title, function(r){
-        var boxes = getSelectedBoxes();
         if (r===true) {
+            $('#progress_circle').percircle(
+                {
+                    percent: 0
+                }
+            ).closest('div').show();
+            var ids = [];
+            $('input[name="importBox[]"]:checked').each(function(){
+                ids.push(Number($(this).closest('tr').find('td:nth-child(2)').text()));
+            });
+            
             $.ajax({
                 type: 'POST',
                 dataType: 'json',
@@ -67,25 +99,77 @@ function exportSelectedDocuments()
                 data: 
                 {
                     ajax: true,
-                    action: 'exportSelected',
-                    boxes: boxes
+                    action: 'importSelected',
+                    ids: ids
                 }
             })
             .done(function(json){
                 if (json.result === true) {
-                    alert('EXPORTED!!');
+                    $('#progress_circle').percircle(
+                    {
+                        percent: 100
+                    }
+                ).closest('div').delay(3000).hide();
+                }
+                if (json.result === true && json.errors.length>0) {
+                    jAlert(
+                        '<div style="overflow: auto; height: 300px;">' +
+                        json.message + 
+                        "<br>" + 
+                        json.errors.join('<br>') +
+                        "</div>",
+                        json.title
+                    );
+                } else if (json.result === true && json.errors.length === 0) { 
+                    jAlert(json.message,json.title);
                 } else {
-                    alert('FAIL!');
+                    jAlert(json.msg_error,json.title);
                 }
             })
             .fail(function(){
                 jAlert('AJAX ERROR');
             });
+            
+            $.ajax({
+                type: 'POST',
+                dataType: 'json',
+                useDefaultXhrHeader: false,
+                data: 
+                {
+                    ajax: true,
+                    action: 'ResetProgressBar',
+                }
+            }).done(function(){
+                progressBar(0);
+            });
         }
     });
     
-    function getSelectedBoxes()
+    function progressBar(value = 0)
     {
-        return [];
+        $('#progress_circle').percircle(
+        {
+            percent: value
+        });
+        
+        $.ajax({
+            type: 'POST',
+            dataType: 'json',
+            useDefaultXhrHeader: false,
+            data: 
+            {
+                ajax: true,
+                action: 'ProgressBar',
+                value: value
+            }
+        }).done(function(json) {
+            if (json.result===true) {
+                value = json.current_progress;
+                if (value === 100) {
+                    return;
+                }
+                progressBar(value);
+            }
+        });
     }
 }

@@ -55,6 +55,38 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         parent::initToolbar();
     }
     
+    public function ajaxProcessResetProgressBar()
+    {
+        $db = Db::getInstance();
+        $db->insert(
+            'mp_progress',
+            array(
+                'id_progress' => pSQL($this->module->name),
+                'progress' => 0,
+            ),
+            true,
+            false,
+            Db::REPLACE
+        );
+        
+        exit();
+    }
+    
+    public function ajaxProcessProgressBar()
+    {
+        $db = Db::getInstance();
+        $sql = "select progress from `"._DB_PREFIX_."mp_progress` where id_progress = '".pSQL($this->module->name)."'";
+        $current_value = (int)$db->getValue($sql);
+        print Tools::jsonEncode(
+            array(
+                'result' => true,
+                'current_progress' => $current_value,
+            )
+        );
+        
+        exit();
+    }
+    
     public function ajaxProcessGetTranslation()
     {
         $translate = Tools::getValue('translate');
@@ -62,6 +94,7 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         
         $translations = array(
             'Export selected documents?' => $this->l('Export selected documents?'),
+            'Import selected products?' => $this->l('Import selected products?'),
         );
         
         $titles = array(
@@ -91,6 +124,14 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         );
     }
     
+    public function ajaxProcessImportSelected()
+    {
+        $ids = Tools::getValue('ids');
+        $controller = $this->getCustomController('Importer');
+        $result = $controller->run(array('action' => 'import', 'ids' => $ids));
+        exit();
+    }
+    
     public function initContent()
     {
         if (Tools::isSubmit('ajax') && !empty(Tools::getValue('action'))) {
@@ -105,31 +146,57 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         
         if (Tools::isSubmit('submitForm')) {
             $controller = $this->getCustomController('CsvParser');
-            $content = $controller->run(array('action' => 'GetFile'));
-            $helperlist = $this->getCustomController('DisplayList');
-            $helperlistContent = $helperlist->run(array('action' => 'Display'));
-            
-            if ($helperlistContent) {
-                $this->helperListContent = "<pre>" . print_r($helperlistContent,1) . "</pre>"; //$this->initHelperList($content);
-            } else {
-                $this->errors[] = $this->l('File has no content to parse.');
+            $result = $controller->run(
+                array(
+                    'action' => 'Insert'
+                )
+            );
+            if ($result) {
+                $helperlist = $this->getCustomController('DisplayList');
+                $helperlistContent = $helperlist->run(
+                    array(
+                        'action' => 'Display',
+                    )
+                );
+
+                if ($helperlistContent) {
+                    $this->helperListContent = $helperlistContent;
+                } else {
+                    $this->errors[] = $this->l('File has no content to parse.');
+                }
             }
         } elseif (Tools::isSubmit('submitBulkexportorders')) {
             $this->messages = $this->processBulkExport();
             exit();
         }
+        
         $this->helperFormContent = $this->initHelperForm();
         $this->content = implode('<br>', $this->messages) 
+            . $this->addHtmlContent()
+            . $this->addCssContent()
+            . $this->addJsContent()
             . $this->helperFormContent 
-            . $this->helperListContent 
-            . $this->scriptContent();
+            . $this->helperListContent ;
         
         parent::initContent();
     }
     
-    private function scriptContent()
+    private function addHtmlContent()
+    {
+        $smarty = Context::getContext()->smarty;
+        return $smarty->fetch($this->module->getPath().'views/templates/admin/percircle.tpl');
+    }
+    
+    private function addCssContent()
+    {
+        Context::getContext()->controller->addCSS($this->module->getPath().'views/css/percircle.css');
+        return '';
+    }
+    
+    private function addJsContent()
     {
         Context::getContext()->controller->addJS($this->module->getUrl().'views/js/adminController.js');
+        Context::getContext()->controller->addJS($this->module->getPath().'views/js/percircle.js');
         return '';
     }
     
@@ -191,81 +258,6 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         return $data;
     }
     
-    private function initFieldsList()
-    {
-        $list = array(
-            'document_id' => array(
-                'title' => $this->l('Id'),
-                'text-align' => 'text-right',
-                'type' => 'text',
-                'width' => 'auto',
-                'search' => false,
-            ),
-            'document_date' => array(
-                'title' => $this->l('Date'),
-                'align' => 'text-center',
-                'width' => 'auto',
-                'type' => 'date',
-                'search' => false,
-            ),
-            'document_number' => array(
-                'title' => $this->l('Number'),
-                'align' => 'text-right',
-                'type' => 'text',
-                'width' => 'auto',
-                'search' => false,
-            ),
-            'customer_name' => array(
-                'title' => $this->l('Customer'),
-                'align' => 'text-left',
-                'width' => 'auto',
-                'type' => 'text',
-                'search' => false,
-            ),
-            'document_total' => array(
-                'title' => $this->l('Total'),
-                'align' => 'text-right',
-                'width' => 'auto',
-                'type' => 'price',
-                'search' => false,
-            ),
-        );
-        
-        return $list;
-    }
-    
-    public function initHelperList($rows)
-    {
-        $fields_list = $this->initFieldsList();
-        $helper = new HelperListCore();
-        $helper->shopLinkType = '';
-        $helper->simple_header = false;
-        // Actions to be displayed in the "Actions" column
-        $helper->actions = array(); //array('edit', 'delete', 'view');
-        $helper->identifier = 'document_id';
-        $helper->show_toolbar = true;
-        $helper->toolbar_btn = array(
-            'export' => array(
-                'href' => 'javascript:exportSelectedDocuments();',
-                'desc' => $this->l('Export selected'),
-            )
-        );
-        $helper->title = $this->l('Documents List');
-        $helper->table = 'expdoc';
-        $helper->bulk_actions = array(
-            'export' => array(
-                'text' => $this->l('Export selected'),
-                'confirm' => $this->l('Continue with this operation?'),
-                'icon' => 'icon fa-list'
-            )
-        );
-        $helper->no_link=true; // Row is not clickable
-        $helper->token = Tools::getAdminTokenLite($this->name);
-        $helper->currentIndex = ContextCore::getContext()->link->getAdminLink($this->name, false);
-        $helper->listTotal = count($rows);
-        return $helper->generateList($rows, $fields_list);
-    }
-    
     protected function initHelperForm()
     {
         $fields_form = array(
@@ -278,9 +270,9 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
                     array(
                         'required' => true,
                         'type' => 'file',
-                        'name' => 'input_file_excel_import',
-                        'label' => $this->l('Excel file'),
-                        'desc' => $this->l('Select an excel sheet containing products data'),
+                        'name' => 'input_file_csv_import',
+                        'label' => $this->l('CSV file'),
+                        'desc' => $this->l('Select a CSV file containing products data'),
                         'prefix' => '<i class="icon-chevron-right"></i>',
                         'suffix' => '<i class="icon-excel"></i>',
                     ),
@@ -316,9 +308,8 @@ class AdminMpSimpleProductImporterController extends ModuleAdminController
         } else {
             $helper->tpl_vars = array(
                 'fields_value' => array(
-                    'input_text_date_start' => '',
-                    'input_text_date_end' => '',
-                    'input_select_type_document' => 0,
+                    'input_file_csv_import' => '',
+                    'input_file_image_folder' => '',
                 ),
                 'languages' => $this->context->controller->getLanguages(),
             );

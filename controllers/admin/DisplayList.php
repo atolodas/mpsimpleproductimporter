@@ -12,7 +12,9 @@ class MpSimpleProductImporterDisplayListController
     protected $context;
     protected $table_import = 'mp_import_products';
     protected $token;
-    
+    protected $list;
+    protected $fields;
+
     public function __construct($controller) {
         $this->controller = $controller;
         $this->context = Context::getContext();
@@ -37,8 +39,39 @@ class MpSimpleProductImporterDisplayListController
     
     public function processActionDisplay($params)
     {
+        $this->list = $this->prepareList($params);
+        $this->fields = $this->initFieldsList();
+        
+        return $this->initHelperList();
+    }
+    
+    public function prepareList($params)
+    {
         $list = $this->readFromDb($params);
-        return $list;
+        $output = array();
+        foreach ($list as $row) {
+            $thumb = isset($row['thumb'])?$row['thumb']:'';
+            $price = isset($row['price'])?$row['price']:0;
+            $output[] = array(
+                'id' => $row['id_row'],
+                'image_url' => $this->getImage($row['id']),
+                'reference' => $row['reference'],
+                'name' => $row['name'],
+                'price' => $price,
+            );
+        }
+        return $output;
+    }
+    
+    public function getImage($thumb)
+    {
+        $path = $this->controller->module->getUrl().'../../upload/img-prod/'.$thumb.'.jpg';
+        return $this->img($path);
+    }
+    
+    public function img($url) 
+    {
+        return "<img src='" . $url . "' style='max-width: 48px; max-height: 48px; object-fit: contain;'>";
     }
     
     public function readFromDb($params)
@@ -56,92 +89,94 @@ class MpSimpleProductImporterDisplayListController
         $result = $db->executeS($sql);
         $output = array();
         foreach($result as $row) {
-            $output[] = unserialize($row['content']);
+            $content = unserialize($row['content']);
+            $content['id_row'] = (int)$row['id'];
+            $output[] = $content;
         }
         return $output;
     }
     
-    public function processActionParse($attachment)
+    private function initFieldsList()
     {
-        $csv = $this->readCSV($attachment['tmp_name']);
-        $totRows = count($csv);
-        if ($totRows<2) {
-            $this->controller->errors[] = $this->l('Bad excel format. Check rows.');
-            return false;
-        }
-        $csvTitles = array();
-        $csvContent = array();
+        $list = array(
+            'id' => array(
+                'title' => $this->l('Id'),
+                'align' => 'text-right',
+                'width' => 64,
+                'type' => 'text',
+                'search' => false,
+            ),
+            'image_url' => array(
+                'title' => $this->l('Image'),
+                'text-align' => 'text-center',
+                'type' => 'bool',
+                'width' => 64,
+                'float' => true,
+                'search' => false,
+            ),
+            'reference' => array(
+                'title' => $this->l('Reference'),
+                'align' => 'text-left',
+                'width' => 'auto',
+                'type' => 'text',
+                'search' => false,
+            ),
+            'name' => array(
+                'title' => $this->l('Name'),
+                'align' => 'text-left',
+                'type' => 'text',
+                'width' => 'auto',
+                'search' => false,
+            ),
+            'price' => array(
+                'title' => $this->l('Price'),
+                'align' => 'text-right',
+                'width' => 'auto',
+                'type' => 'price',
+                'search' => false,
+            ),
+        );
         
-        $mandatory = array('reference','name','category default');
-        //Get titles
-        foreach($csv[0] as $col)
-        {
-            $csvTitles[] = Tools::strtolower($col);
-        }
-        $intersect = count(array_intersect($mandatory, $csvTitles));
-        if ($intersect != count($mandatory)) {
-            $this->controller->errors[] = $this->l('Missing mandatory columns.');
-            return false;
-        }
-        //Create associative array with titles for each row
-        array_shift($csv);
-        $idxRow = 0;
-        foreach ($csv as $row) {
-            $idxCol = 0;
-            if (!empty($row)) {
-                foreach ($row as $col) {
-                    $csvContent[$idxRow][$csvTitles[$idxCol]] = $col;
-                    $idxCol++;
-                }
-            }
-            $idxRow++;
-        }
-        
-        //Insert array in archive;
-        $db = Db::getInstance();
-        $db->execute('truncate table `'._DB_PREFIX_.$this->table_import.'`;');
-        foreach ($csvContent as $product) {
-            if (!empty($product['reference'])) {
-                $content = serialize($product);
-                if (empty($content)) {
-                    $this->controller->errors[] = sprintf(
-                        $this->l('Error importing product %s.'), $product['reference']
-                    );
-                } else {
-                    $db->insert(
-                        $this->table_import,
-                        array(
-                            'token' => $this->token,
-                            'reference' => $product['reference'],
-                            'content' => preg_replace('/\'/',"\'",$content),
-                        ),
-                        true,
-                        true,
-                        Db::REPLACE);
-                }
-            }
-        }
-        
-        $sql = new DbQueryCore();
-        $sql->select('*')
-            ->from($this->table_import)
-            ->where('token=\''.pSQL($this->token) . '\'')
-            ->orderBy('reference');
-        $result = $db->executeS($sql);
-        $output = array();
-        foreach ($result as $row) {
-            $output[] = unserialize($row['content']);
-        }
-        return $output;
+        return $list;
     }
     
-    public function readCSV($csvFile){
-        $file_handle = fopen($csvFile, 'r');
-        while (!feof($file_handle) ) {
-            $line_of_text[] = fgetcsv($file_handle, 0, ';', '"');
-        }
-        fclose($file_handle);
-        return $line_of_text;
+    public function initHelperList()
+    {
+        $helper = new HelperListCore();
+        $helper->shopLinkType = '';
+        $helper->simple_header = false;
+        // Actions to be displayed in the "Actions" column
+        $helper->actions = array(); //array('edit', 'delete', 'view');
+        $helper->identifier = 'id';
+        $helper->show_toolbar = true;
+        $helper->toolbar_btn = array(
+            'import' => array(
+                'href' => 'javascript:mpimport_importSelectedProducts();',
+                'desc' => $this->l('Import selected'),
+            ),
+            'toggle-on' => array(
+                'href' => 'javascript:mpimport_checkAll();',
+                'desc' => $this->l('Select All'),
+            ),
+            'toggle-off' => array(
+                'href' => 'javascript:mpimport_uncheckAll();',
+                'desc' => $this->l('Select None'),
+            )
+        );
+        $helper->title = $this->l('Products List');
+        $helper->table = 'import';
+        $helper->bulk_actions = array(
+            'import' => array(
+                'text' => $this->l('Import selected'),
+                'confirm' => $this->l('Continue with this operation?'),
+                'icon' => 'icon fa-list'
+            )
+        );
+        $helper->no_link=true; // Row is not clickable
+        $helper->token = Tools::getAdminTokenLite($this->controller->name);
+        $helper->currentIndex = ContextCore::getContext()->link->getAdminLink($this->controller->name, false);
+        $helper->listTotal = count($this->list);
+        return $helper->generateList($this->list, $this->fields);
     }
     
     /**
